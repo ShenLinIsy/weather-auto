@@ -1,0 +1,34 @@
+name: 每日获取后天气象预报
+
+on:
+  schedule:
+    # 北京时间 09:00 → UTC 01:00
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 运行数据抓取脚本
+        env:
+          API_USERNAME: ${{ secrets.API_USERNAME }}
+          API_PASSWORD: ${{ secrets.API_PASSWORD }}
+        run: python weather_fetcher.py
+
+      - name: 上传 xlsx 文件
+        uses: actions/upload-artifact@v4
+        with:
+          name: weather-xlsx
+          path: output/*.xlsx
