@@ -30,7 +30,20 @@ def fetch_and_save():
     print(f"坐标：{LAT_LON}")
     resp = requests.get(full_url, auth=(USERNAME, PASSWORD), timeout=60)
     resp.raise_for_status()
+    
     df = pd.read_csv(pd.io.common.StringIO(resp.text))
+    
+    # ---------- 新增：时区转换 ----------
+    # 假设第一列为时间列，列名可能是 'time'、'valid_time' 或中文 '时间'
+    first_col = df.columns[0]
+    # 转为 datetime，并明确指定为 UTC
+    df[first_col] = pd.to_datetime(df[first_col], utc=True)
+    # 转为北京时间（UTC+8）
+    df[first_col] = df[first_col].dt.tz_convert('Asia/Shanghai')
+    # 去掉时区信息，只保留字符串形式
+    df[first_col] = df[first_col].dt.strftime('%Y-%m-%d %H:%M:%S')
+    # -----------------------------------
+    
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     today_str = datetime.now(timezone(timedelta(hours=8))).strftime("%Y%m%d")
     output_file = f"{OUTPUT_DIR}/光伏气象预报_{today_str}.xlsx"
