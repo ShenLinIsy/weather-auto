@@ -9,9 +9,34 @@ API_PATH = "/api/v1.1/forecast"
 USERNAME = os.environ["API_USERNAME"]
 PASSWORD = os.environ["API_PASSWORD"]
 LAT_LON = "39.940833,112.869167"
-PARAMS = "t_2m:C,relative_humidity_2m:p,wind_speed_10m:ms,wind_dir_10m:d,precip_1h:mm,global_rad:W,direct_rad:W,diffuse_rad:W"
+# 包含天气现象的核心参数（10个）
+PARAMS = "t_10m:C,relative_humidity_10m:p,pressure_10m:hPa,wind_speed_10m:ms,wind_dir_10m:d,wind_gusts_10m_1h:ms,precip_15min:mm,global_rad:W,effective_cloud_cover:p,weather_symbol_1h:idx"
 INTERVAL_MIN = 15
 OUTPUT_DIR = "output"
+
+# 天气现象编码表
+WEATHER_MAP = {
+    1: "晴天", 2: "少云", 3: "晴转多云", 4: "全天多云",
+    5: "降雨", 6: "雨夹雪", 7: "雪", 8: "暴雨",
+    9: "暴雪", 10: "雨夹雪较大", 11: "薄雾", 12: "浓雾",
+    13: "冻雨", 14: "雷暴", 15: "毛毛雨", 16: "沙尘暴"
+}
+
+def decode_weather(val):
+    """将数值转为中文含义，自动处理夜间标记"""
+    if pd.isna(val):
+        return ""
+    try:
+        v = int(val)
+    except ValueError:
+        return f"无效({val})"
+    night = ""
+    if v >= 100:
+        night = "夜间"
+        v -= 100
+    return night + WEATHER_MAP.get(v, f"未知({v})")
+
+# --------------------------
 
 def get_day_after_tomorrow_utc() -> str:
     today = datetime.now(timezone(timedelta(hours=8)))
@@ -33,16 +58,19 @@ def fetch_and_save():
     
     df = pd.read_csv(pd.io.common.StringIO(resp.text))
     
-    # ---------- 新增：时区转换 ----------
-    # 假设第一列为时间列，列名可能是 'time'、'valid_time' 或中文 '时间'
+    # ---------- 时间列 UTC→北京时间 ----------
     first_col = df.columns[0]
-    # 转为 datetime，并明确指定为 UTC
     df[first_col] = pd.to_datetime(df[first_col], utc=True)
-    # 转为北京时间（UTC+8）
     df[first_col] = df[first_col].dt.tz_convert('Asia/Shanghai')
-    # 去掉时区信息，只保留字符串形式
     df[first_col] = df[first_col].dt.strftime('%Y-%m-%d %H:%M:%S')
-    # -----------------------------------
+    
+    # ---------- 新增：天气现象含义列 ----------
+    weather_col = "weather_symbol_1h:idx"
+    if weather_col in df.columns:
+        # 在天气现象数值列右边插入含义列
+        col_idx = df.columns.get_loc(weather_col) + 1
+        df.insert(col_idx, "天气现象", df[weather_col].apply(decode_weather))
+    # -----------------------------------------
     
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     today_str = datetime.now(timezone(timedelta(hours=8))).strftime("%Y%m%d")
