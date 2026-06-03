@@ -8,7 +8,7 @@ API_BASE = "api.ztweather.com"
 API_PATH = "/api/v1.1/forecast"
 USERNAME = os.environ["API_USERNAME"]
 PASSWORD = os.environ["API_PASSWORD"]
-LAT_LON = "30.01083,121.63147"
+LAT_LON = "39.940833,112.869167"
 # 包含天气现象的核心参数（10个）
 PARAMS = "t_10m:C,relative_humidity_10m:p,pressure_10m:hPa,wind_speed_10m:ms,wind_dir_10m:d,wind_gusts_10m_1h:ms,precip_15min:mm,global_rad:W,effective_cloud_cover:p,weather_symbol_1h:idx"
 INTERVAL_MIN = 15
@@ -55,10 +55,6 @@ def fetch_and_save():
     print(f"坐标：{LAT_LON}")
     resp = requests.get(full_url, auth=(USERNAME, PASSWORD), timeout=60)
     resp.raise_for_status()
-    
-print("Status Code:", resp.status_code)
-print("Response Text (first 500 chars):", resp.text[:500])
-print("Response Headers:", resp.headers)
     
     df = pd.read_csv(pd.io.common.StringIO(resp.text))
     
