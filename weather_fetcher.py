@@ -56,6 +56,10 @@ def fetch_and_save():
     resp = requests.get(full_url, auth=(USERNAME, PASSWORD), timeout=60)
     resp.raise_for_status()
     
+print("Status Code:", resp.status_code)
+print("Response Text (first 500 chars):", resp.text[:500])
+print("Response Headers:", resp.headers)
+    
     df = pd.read_csv(pd.io.common.StringIO(resp.text))
     
     # ---------- 时间列 UTC→北京时间 ----------
