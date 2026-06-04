@@ -2,6 +2,9 @@ import requests
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 import os
+import sys
+import time
+import io
 
 # ---------- 配置 ----------
 API_BASE = "api.ztweather.com"
@@ -13,6 +16,8 @@ LAT_LON = "30.01083,121.63147"
 PARAMS = "t_10m:C,relative_humidity_10m:p,pressure_10m:hPa,wind_speed_10m:ms,wind_dir_10m:d,wind_gusts_10m_1h:ms,precip_15min:mm,global_rad:W,effective_cloud_cover:p,weather_symbol_1h:idx"
 INTERVAL_MIN = 15
 OUTPUT_DIR = "output"
+MAX_RETRIES = 3
+RETRY_DELAY_SEC = 5
 
 # 天气现象编码表
 WEATHER_MAP = {
@@ -51,32 +56,87 @@ def fetch_and_save():
     start_utc = get_day_after_tomorrow_utc()
     time_segment = f"{start_utc}P1D:PT{INTERVAL_MIN}M"
     full_url = f"http://{API_BASE}{API_PATH}/{time_segment}/{PARAMS}/{LAT_LON}/csv"
-    print(f"请求时间（UTC）：{start_utc}")
-    print(f"坐标：{LAT_LON}")
-    resp = requests.get(full_url, auth=(USERNAME, PASSWORD), timeout=60)
-    resp.raise_for_status()
+    print(f"[INFO] 请求时间（UTC）：{start_utc}")
+    print(f"[INFO] 坐标：{LAT_LON}")
+    print(f"[INFO] 完整URL：{full_url}")
+
+    # ---------- 带重试的请求 ----------
+    resp = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            print(f"[INFO] 第 {attempt} 次尝试请求...")
+            resp = requests.get(full_url, auth=(USERNAME, PASSWORD), timeout=60)
+            print(f"[INFO] HTTP 状态码：{resp.status_code}")
+            print(f"[INFO] 响应内容长度：{len(resp.text)} 字符")
+            
+            # 检查 HTTP 状态码
+            resp.raise_for_status()
+            
+            # 检查响应内容是否为空
+            if not resp.text or resp.text.strip() == "":
+                print(f"[WARN] 第 {attempt} 次尝试：API 返回了空内容")
+                if attempt < MAX_RETRIES:
+                    print(f"[INFO] 等待 {RETRY_DELAY_SEC} 秒后重试...")
+                    time.sleep(RETRY_DELAY_SEC)
+                    continue
+                else:
+                    print("[ERROR] 多次重试后仍然得到空响应")
+                    sys.exit(1)
+            
+            # 成功获取非空内容，跳出重试循环
+            print("[INFO] 成功获取数据响应")
+            break
+            
+        except requests.exceptions.HTTPError as e:
+            print(f"[ERROR] HTTP 错误：{e}")
+            if resp is not None:
+                print(f"[ERROR] 响应内容预览：{resp.text[:500]}")
+            if attempt == MAX_RETRIES:
+                sys.exit(1)
+            print(f"[INFO] 等待 {RETRY_DELAY_SEC} 秒后重试...")
+            time.sleep(RETRY_DELAY_SEC)
+            
+        except requests.exceptions.RequestException as e:
+            print(f"[ERROR] 网络请求异常：{e}")
+            if attempt == MAX_RETRIES:
+                sys.exit(1)
+            print(f"[INFO] 等待 {RETRY_DELAY_SEC} 秒后重试...")
+            time.sleep(RETRY_DELAY_SEC)
     
-    df = pd.read_csv(pd.io.common.StringIO(resp.text))
-    
+    # 如果 resp 为 None 或内容为空（理论上前面已退出），再次检查
+    if resp is None or not resp.text or resp.text.strip() == "":
+        print("[ERROR] 无法获取有效数据")
+        sys.exit(1)
+
+    # ---------- 解析 CSV ----------
+    try:
+        df = pd.read_csv(io.StringIO(resp.text))
+        print(f"[INFO] 成功解析 CSV，共 {len(df)} 行")
+    except pd.errors.EmptyDataError:
+        print("[ERROR] CSV 数据为空，无法解析")
+        sys.exit(1)
+    except Exception as e:
+        print(f"[ERROR] 解析 CSV 时出错：{e}")
+        sys.exit(1)
+
     # ---------- 时间列 UTC→北京时间 ----------
     first_col = df.columns[0]
     df[first_col] = pd.to_datetime(df[first_col], utc=True)
     df[first_col] = df[first_col].dt.tz_convert('Asia/Shanghai')
     df[first_col] = df[first_col].dt.strftime('%Y-%m-%d %H:%M:%S')
-    
+
     # ---------- 新增：天气现象含义列 ----------
     weather_col = "weather_symbol_1h:idx"
     if weather_col in df.columns:
-        # 在天气现象数值列右边插入含义列
         col_idx = df.columns.get_loc(weather_col) + 1
         df.insert(col_idx, "天气现象", df[weather_col].apply(decode_weather))
-    # -----------------------------------------
-    
+
+    # ---------- 保存 Excel ----------
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     today_str = datetime.now(timezone(timedelta(hours=8))).strftime("%Y%m%d")
     output_file = f"{OUTPUT_DIR}/光伏气象预报_{today_str}.xlsx"
     df.to_excel(output_file, index=False)
-    print(f"数据已保存至：{output_file}")
+    print(f"[INFO] 数据已保存至：{output_file}")
 
 if __name__ == "__main__":
     fetch_and_save()
