@@ -68,18 +68,17 @@ def decode_weather(val):
 
 # --------------------------
 
-def get_day_after_tomorrow_utc() -> str:
-    today = datetime.now(timezone(timedelta(hours=8)))
-    day_after_tomorrow = today.date() + timedelta(days=2)
-    target_cst = datetime.combine(
-        day_after_tomorrow, datetime.min.time(),
-        tzinfo=timezone(timedelta(hours=8))
-    )
+def get_tomorrow_utc() -> str:
+    # 获取明天北京时间 00:00 对应的 UTC 时间
+    today = datetime.now(timezone(timedelta(hours=8)))  # 当前北京时间
+    tomorrow = today.date() + timedelta(days=1)
+    target_cst = datetime.combine(tomorrow, datetime.min.time(),
+                                  tzinfo=timezone(timedelta(hours=8)))
     return target_cst.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 def fetch_one_location(name, lat_lon):
     """获取单个坐标的数据，返回处理好的 DataFrame（已转换时间和中文表头）"""
-    start_utc = get_day_after_tomorrow_utc()
+    start_utc = get_tomorrow_utc()
     time_segment = f"{start_utc}P1D:PT{INTERVAL_MIN}M"
     full_url = f"http://{API_BASE}{API_PATH}/{time_segment}/{PARAMS}/{lat_lon}/csv"
     print(f"请求 {name} ({lat_lon})...")
