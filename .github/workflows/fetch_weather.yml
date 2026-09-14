@@ -2,7 +2,7 @@ name: 每日获取后天气象预报
 
 on:
   schedule:
-  - cron: '30 22 * * *'   # 北京时间每天 6:30
+  - cron: '0 22 * * *'   # 北京时间每天 6:00
   workflow_dispatch:
 
 jobs:
